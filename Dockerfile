@@ -1,7 +1,7 @@
 ARG           FROM_REGISTRY=docker.io/dubodubonduponey
 
-ARG           FROM_IMAGE_RUNTIME=base:runtime-bookworm-2025-05-01
-ARG           FROM_IMAGE_TOOLS=tools:linux-bookworm-2025-05-01
+ARG           FROM_IMAGE_TOOLS=tools:linux-trixie-2025-11-01
+ARG           FROM_IMAGE_RUNTIME=base:runtime-trixie-2025-11-01
 
 FROM          $FROM_REGISTRY/$FROM_IMAGE_TOOLS                                                                          AS builder-tools
 
@@ -10,39 +10,22 @@ FROM          $FROM_REGISTRY/$FROM_IMAGE_TOOLS                                  
 #######################
 FROM          $FROM_REGISTRY/$FROM_IMAGE_RUNTIME
 
-# hadolint ignore=DL3002
 USER          root
 
-# Avahi and cups
-RUN           --mount=type=secret,uid=100,id=CA \
-              --mount=type=secret,uid=100,id=CERTIFICATE \
-              --mount=type=secret,uid=100,id=KEY \
-              --mount=type=secret,uid=100,id=GPG.gpg \
+# Avahi, cups, and driver
+RUN           --mount=type=secret,uid=42,id=CA \
+              --mount=type=secret,uid=42,id=CERTIFICATE \
+              --mount=type=secret,uid=42,id=KEY \
+              --mount=type=secret,uid=42,id=GPG.gpg \
               --mount=type=secret,id=NETRC \
               --mount=type=secret,id=APT_SOURCES \
               --mount=type=secret,id=APT_CONFIG \
               apt-get update -qq && \
               apt-get install -qq --no-install-recommends \
-                dbus=1.14.10-1~deb12u1 \
-                avahi-daemon=0.8-10+deb12u1 \
-                cups=2.4.2-3+deb12u8 && \
-              apt-get -qq autoremove      && \
-              apt-get -qq clean           && \
-              rm -rf /var/lib/apt/lists/* && \
-              rm -rf /tmp/*               && \
-              rm -rf /var/tmp/*
-
-# Drivers
-RUN           --mount=type=secret,uid=100,id=CA \
-              --mount=type=secret,uid=100,id=CERTIFICATE \
-              --mount=type=secret,uid=100,id=KEY \
-              --mount=type=secret,uid=100,id=GPG.gpg \
-              --mount=type=secret,id=NETRC \
-              --mount=type=secret,id=APT_SOURCES \
-              --mount=type=secret,id=APT_CONFIG \
-              apt-get update -qq && \
-              apt-get install -qq --no-install-recommends \
-                printer-driver-brlaser=6-3 && \
+                dbus=1.16.2-2 \
+                avahi-daemon=0.8-16 \
+                cups=2.4.10-3+deb13u1 \
+                printer-driver-brlaser=6.2.7-1 && \
               apt-get -qq autoremove      && \
               apt-get -qq clean           && \
               rm -rf /var/lib/apt/lists/* && \
@@ -50,9 +33,15 @@ RUN           --mount=type=secret,uid=100,id=CA \
               rm -rf /var/tmp/*
 
 # Deviate avahi temporary files into /tmp (there is a socket, so, probably need exec)
-RUN           mkdir -p "$XDG_STATE_HOME"/avahi-daemon; ln -s "$XDG_STATE_HOME"/avahi-daemon /run; chown avahi:avahi /run/avahi-daemon; chmod 777 /run/avahi-daemon
+RUN           mkdir -p "$XDG_RUNTIME_DIR"/avahi-daemon; ln -s "$XDG_RUNTIME_DIR"/avahi-daemon /run; chown avahi:avahi /run/avahi-daemon; chmod 777 /run/avahi-daemon
 
-USER          dubo-dubon-duponey
+RUN           ln -sf /dev/stdout /var/log/cups/access_log && \
+              ln -sf /dev/stderr /var/log/cups/error_log
+
+# Cups requires root for anything useful
+# USER          dubo-dubon-duponey
+
+COPY          --from=builder-tools  /magnetar/bin/http-health    /magnetar/bin
 
 EXPOSE        663
 
@@ -60,7 +49,7 @@ EXPOSE        663
 VOLUME        /etc/cups
 
 # Used by dbus and avahi (see entrypoint.sh)
-# /tmp/runtime by default - cannot be configured since build time makes use of it
 VOLUME        "$XDG_RUNTIME_DIR"
-VOLUME        "$XDG_STATE_HOME"
 
+ENV           HEALTHCHECK_URL=http://localhost:631/
+HEALTHCHECK   --interval=120s --timeout=10s --start-period=10s --retries=1 CMD http-health || exit 1

@@ -12,7 +12,7 @@ A docker image for [CUPS](https://www.cups.org/) geared towards exposing USB pri
     * [x] image runs with no capabilities
     * [ ] process runs as a non-root user, disabled login, no shell
  * lightweight
-    * [x] based on our slim [Debian Bookworm](https://github.com/dubo-dubon-duponey/docker-debian)
+    * [x] based on our slim [Debian Trixie](https://github.com/dubo-dubon-duponey/docker-debian)
     * [x] simple entrypoint script
     * [ ] multi-stage build with ~~zero packages~~ `cups`, `dbus`, `avahi-daemon`, `printer-driver-brlaser` installed in the runtime image
  * observable

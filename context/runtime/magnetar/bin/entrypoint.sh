@@ -12,9 +12,7 @@ readonly root
 helpers::dir::writable /etc/cups
 
 # Avahi and dbus
-# /tmp/runtime
-helpers::dir::writable "$XDG_STATE_HOME/avahi-daemon"
-# /tmp/runtime
+helpers::dir::writable "$XDG_RUNTIME_DIR/avahi-daemon"
 helpers::dir::writable "$XDG_RUNTIME_DIR/dbus" create
 
 # mDNS
@@ -38,5 +36,4 @@ post::config(){
 }
 
 post::config &
-#exec cupsd -c "$XDG_CONFIG_DIRS"/cups/main.conf -f "$@"
 exec cupsd -f "$@"
