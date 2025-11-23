@@ -10,6 +10,8 @@ FROM          $FROM_REGISTRY/$FROM_IMAGE_TOOLS                                  
 #######################
 FROM          $FROM_REGISTRY/$FROM_IMAGE_RUNTIME
 
+ENV           _SERVICE_PORT=631
+
 USER          root
 
 # Avahi, cups, and driver
@@ -32,24 +34,66 @@ RUN           --mount=type=secret,uid=42,id=CA \
               rm -rf /tmp/*               && \
               rm -rf /var/tmp/*
 
-# Deviate avahi temporary files into /tmp (there is a socket, so, probably need exec)
-RUN           mkdir -p "$XDG_RUNTIME_DIR"/avahi-daemon; ln -s "$XDG_RUNTIME_DIR"/avahi-daemon /run; chown avahi:avahi /run/avahi-daemon; chmod 777 /run/avahi-daemon
+# Deviate avahi
+#RUN           mkdir -p "$XDG_RUNTIME_DIR"/avahi-daemon && \
+#              ln -s "$XDG_RUNTIME_DIR"/avahi-daemon /run && \
+#              chmod 777 /run/avahi-daemon && \
+#              chown avahi:avahi /run/avahi-daemon
 
-RUN           ln -sf /dev/stdout /var/log/cups/access_log && \
-              ln -sf /dev/stderr /var/log/cups/error_log
+# Avahi special dealing. See notes in mdns.sh
+RUN           mkdir -p /run/avahi-daemon && \
+              chmod 777 /run/avahi-daemon && \
+              chown avahi:avahi /run/avahi-daemon
 
-# Cups requires root for anything useful
-# USER          dubo-dubon-duponey
+# Yes, it will create an anonymous volume
+VOLUME        /run/avahi-daemon
 
-COPY          --from=builder-tools  /magnetar/bin/http-health    /magnetar/bin
+# 1. Add user to lp groups
+# 2. Fix debian package executable permission insanity - make up your mind debian. socket is "fine" but braille and usb "danger danger"?
+# 3. Disable cups basic authentication
+#    Disable require user entirely
+#    Change log level
+# 4. Ensure permissions are correct on config
+# 5. Deviate cups logs, cache, spool, run, config
+#    Note: for logs, we cannot symlink to stdout because CUPS is not happy with that (re: buffering)
 
-EXPOSE        663
+RUN           sed -i "/^lpadmin:/s/$/,dubo-dubon-duponey/; /^lp:/s/$/,dubo-dubon-duponey/" /etc/group; \
+              chmod 755 /usr/lib/cups/backend/*; \
+              sed -i \
+                -e 's/^DefaultAuthType Basic/DefaultAuthType None/' \
+                -e '/Require user @SYSTEM/d' \
+                -e 's/LogLevel warn/LogLevel info/' \
+                /etc/cups/cupsd.conf; \
+              chown -R dubo-dubon-duponey "/etc/cups"; \
+              rm -Rf /var/log/cups; \
+              rm -Rf /var/cache/cups; \
+              rm -Rf /var/spool/cups; \
+              rm -Rf /run/cups; \
+              mv /etc/cups "$XDG_CONFIG_HOME"/cups; \
+              ln -s "$XDG_RUNTIME_DIR"/cups /var/log/cups; \
+              ln -s "$XDG_CACHE_HOME"/cups /var/cache/cups; \
+              ln -s "$XDG_CACHE_HOME"/cups /var/spool/cups; \
+              ln -s "$XDG_RUNTIME_DIR"/cups /run/cups; \
+              ln -s "$XDG_CONFIG_HOME"/cups /etc/cups
 
-# Cups will add printers there with cupsctl
-VOLUME        /etc/cups
+USER          dubo-dubon-duponey
 
-# Used by dbus and avahi (see entrypoint.sh)
-VOLUME        "$XDG_RUNTIME_DIR"
+COPY          --from=builder-tools  /magnetar/bin/http-health /magnetar/bin
+COPY          --from=builder-tools  /magnetar/bin/caddy       /magnetar/bin
+# Docker does not need this, but nerdctl might
+#RUN           setcap 'cap_net_bind_service+ep' /magnetar/bin/caddy; \
+#              setcap 'cap_net_bind_service+ep' /usr/sbin/cupsd
 
-ENV           HEALTHCHECK_URL=http://localhost:631/
-HEALTHCHECK   --interval=120s --timeout=10s --start-period=10s --retries=1 CMD http-health || exit 1
+EXPOSE        $_SERVICE_PORT
+EXPOSE        443
+
+# The following volumes are necessary:
+# Used by dbus and avahi, and also for logs from cups
+#VOLUME        "$XDG_RUNTIME_DIR"
+# Used by Caddy to store certificates
+#VOLUME        "$XDG_DATA_HOME"
+# Config for cups and caddy (mutable)
+#VOLUME        "$XDG_CONFIG_HOME"
+
+ENV           HEALTHCHECK_URL=http://127.0.0.1/
+HEALTHCHECK   --interval=120s --timeout=30s --start-period=10s --retries=1 CMD http-health || exit 1
