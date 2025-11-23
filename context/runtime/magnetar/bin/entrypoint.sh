@@ -21,23 +21,34 @@ helpers::dir::writable "$XDG_CONFIG_HOME"/cups
 helpers::dir::writable "$XDG_RUNTIME_DIR"/cups create
 helpers::dir::writable "$XDG_CACHE_HOME"/cups create
 
-# Ensure we are sharing printers
-cupsctl --share-printers || helpers::emergency "cupsctl" &
-
 # Tooling
 mdns::start::dbus
 mdns::start::avahi
-http::start
+# Experimental caddy front
+[ "$MOD_HTTP_ENABLED" != true ] || http::start
 
 helpers::logger::log INFO "🚀 entrypoint" "starting main"
 # Logs ingestion (cups cannot log to stdio)
-helpers::logger::ingest INFO "🖨️cups_error" "$XDG_RUNTIME_DIR"/cups/error_log  || helpers::emergency "cups error logger" &
-helpers::logger::ingest INFO "🖨️cups_access" "$XDG_RUNTIME_DIR"/cups/access_log || helpers::emergency "cups access logger" &
-helpers::logger::ingest INFO "🖨️cups_page" "$XDG_RUNTIME_DIR"/cups/page_log   || helpers::emergency "cups page logger" &
+helpers::logger::ingest INFO "🖨️cups_error" "$XDG_RUNTIME_DIR"/cups/error_log  || helpers::emergency "cups error logger" "error code $?" &
+helpers::logger::ingest INFO "🖨️cups_access" "$XDG_RUNTIME_DIR"/cups/access_log || helpers::emergency "cups access logger" "error code $?" &
+helpers::logger::ingest INFO "🖨️cups_page" "$XDG_RUNTIME_DIR"/cups/page_log   || helpers::emergency "cups page logger" "error code $?" &
 
 # Start cupsd
-cupsd -f "$@" && helpers::logger::log INFO "✅ entrypoint" "done" || helpers::emergency "error code $?" &
-
+cupsd -f "$@" &
 main_pid=$!
+
+tries=1
+# Ensure we are sharing printers
+until [ -e "$XDG_RUNTIME_DIR"/cups/cups.sock ]; do
+  sleep 1s
+  tries=$(( tries + 1))
+  [ $tries -lt 10 ] || {
+    helpers::logger::log ERROR "🖨️cupsctl" "failed waiting for socket in a reasonable time"
+    exit 1
+  }
+done
+
+cupsctl --share-printers --remote-any || helpers::emergency "cupsctl" "error code $?" &
+
 helpers::logger::log INFO "⌛ entrypoint" "watching ($main_pid)"
 wait $main_pid

@@ -34,12 +34,6 @@ RUN           --mount=type=secret,uid=42,id=CA \
               rm -rf /tmp/*               && \
               rm -rf /var/tmp/*
 
-# Deviate avahi
-#RUN           mkdir -p "$XDG_RUNTIME_DIR"/avahi-daemon && \
-#              ln -s "$XDG_RUNTIME_DIR"/avahi-daemon /run && \
-#              chmod 777 /run/avahi-daemon && \
-#              chown avahi:avahi /run/avahi-daemon
-
 # Avahi special dealing. See notes in mdns.sh
 RUN           mkdir -p /run/avahi-daemon && \
               chmod 777 /run/avahi-daemon && \
@@ -57,11 +51,13 @@ VOLUME        /run/avahi-daemon
 # 5. Deviate cups logs, cache, spool, run, config
 #    Note: for logs, we cannot symlink to stdout because CUPS is not happy with that (re: buffering)
 
+# Note: problematic until we have a way to isolate CUPSd
+#                -e 's/^DefaultAuthType Basic/DefaultAuthType None/' \
+#                -e '/Require user @SYSTEM/d' \
+
 RUN           sed -i "/^lpadmin:/s/$/,dubo-dubon-duponey/; /^lp:/s/$/,dubo-dubon-duponey/" /etc/group; \
               chmod 755 /usr/lib/cups/backend/*; \
               sed -i \
-                -e 's/^DefaultAuthType Basic/DefaultAuthType None/' \
-                -e '/Require user @SYSTEM/d' \
                 -e 's/LogLevel warn/LogLevel info/' \
                 /etc/cups/cupsd.conf; \
               chown -R dubo-dubon-duponey "/etc/cups"; \
@@ -83,6 +79,8 @@ COPY          --from=builder-tools  /magnetar/bin/caddy       /magnetar/bin
 # Docker does not need this, but nerdctl might
 #RUN           setcap 'cap_net_bind_service+ep' /magnetar/bin/caddy; \
 #              setcap 'cap_net_bind_service+ep' /usr/sbin/cupsd
+
+ENV           MOD_HTTP_ENABLED=false
 
 EXPOSE        $_SERVICE_PORT
 EXPOSE        443
