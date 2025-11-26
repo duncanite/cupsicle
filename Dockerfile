@@ -82,6 +82,8 @@ COPY          --from=builder-tools  /magnetar/bin/caddy       /magnetar/bin
 
 ENV           MOD_HTTP_ENABLED=false
 
+ENV           TMPDIR="$XDG_RUNTIME_DIR"/tmp
+
 EXPOSE        $_SERVICE_PORT
 EXPOSE        443
 
