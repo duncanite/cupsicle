@@ -64,7 +64,12 @@ mdns::start::default(){
 mdns::start::broadcaster(){
   [ ! -e "$_default_mod_mdns_configuration_path" ] || mdns::records::load "$_default_mod_mdns_configuration_path"
   local IFS=","
-  goello-server-ng -json "[${_internal_mod_mdns_records[*]}]" &
+  (
+    exec > >(helpers::logger::slurp "$LOG_LEVEL" "📡 mdns")
+    exec 2> >(helpers::logger::slurp ERROR "📡 mdns")
+    goello-server-ng -json "[${_internal_mod_mdns_records[*]}]"
+  ) && helpers::logger::log INFO "📡 mdns" "stopped properly" \
+    || helpers::emergency "📡 mdns" "error code $?" &
 }
 
 mdns::start::avahi(){

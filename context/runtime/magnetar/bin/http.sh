@@ -2,7 +2,7 @@
 set -o errexit -o errtrace -o functrace -o nounset -o pipefail
 
 http::certificate(){
-  printf >&2 "Displaying root certificate to trust\n"
+  helpers::logger::log INFO "🌐 http" "Displaying root certificate to trust"
   if [ ! -e "$XDG_DATA_HOME"/caddy/pki/authorities/local/root.crt ]; then
     helpers::logger::log ERROR "🌐 http" "No root certificate installed or generated. Run the container so that a cert is generated, or provide one at runtime."
     exit 1

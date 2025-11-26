@@ -20,6 +20,8 @@ helpers::dir::writable "$XDG_CONFIG_HOME"/cups
 # Ensure runtime dir is here
 helpers::dir::writable "$XDG_RUNTIME_DIR"/cups create
 helpers::dir::writable "$XDG_CACHE_HOME"/cups create
+# cupsctl needs tmp access
+helpers::dir::writable "$TMPDIR" create
 
 # Tooling
 mdns::start::dbus
